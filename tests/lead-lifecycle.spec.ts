@@ -106,8 +106,11 @@ test.describe('Lead Lifecycle', () => {
     await page.goto('/crm/leads?action=create');
     
     // Step 3: Wait for the create lead modal to appear
-    const modal = page.getByRole('dialog', { name: /создать новый лид/i });
+    // Note: Modal has role="dialog" with aria-labelledby pointing to title element
+    // Using getByRole without name filter, then verify title text
+    const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 15000 });
+    await expect(modal.getByText(/создать новый лид/i)).toBeVisible();
     
     // Step 4: Fill lead form using getByLabel within modal
     const titleInput = modal.getByLabel(/название лида/i);

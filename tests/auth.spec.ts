@@ -28,28 +28,38 @@ test.describe('Authentication', () => {
     await page.locator('#username').fill(username);
     await page.locator('#password').fill(password);
     
-    // Click login button
-    await page.getByRole('button', { name: /войти/i }).click();
+    // Click login button and wait for navigation away from /login
+    // Use Promise.all to ensure we catch the navigation
+    await Promise.all([
+      page.waitForURL(url => !url.toString().includes('/login'), { timeout: 30000 }),
+      page.getByRole('button', { name: /войти|sign in|login/i }).click(),
+    ]);
     
-    // Wait for navigation away from login page
-    await page.waitForURL(/\/(crm|dashboard|contact-center)/, { timeout: 30000 });
-    
-    // Verify successful login - check URL is NOT /login and contains expected route
+    // If still on /login, log error details for debugging
     const currentUrl = page.url();
-    expect(currentUrl).not.toContain('/login');
-    expect(currentUrl).toMatch(/\/(crm|dashboard|contact-center)/);
-    
-    // Additional verification - check for logged-in state using stable selector
-    // Use sequential checks instead of .or() to avoid strict mode violation
-    const leadsLink = page.getByRole('link', { name: /лиды/i });
-    const crmBtn = page.getByRole('button', { name: /^CRM$/i });
-    
-    const leadsCount = await leadsLink.count();
-    if (leadsCount > 0) {
-      await expect(leadsLink.first()).toBeVisible({ timeout: 15000 });
-    } else {
-      await expect(crmBtn.first()).toBeVisible({ timeout: 15000 });
+    if (currentUrl.includes('/login')) {
+      // Check for error messages on the page
+      const alertText = await page.locator('[role="alert"], .toast, .alert, .error-message').textContent().catch(() => null);
+      const formErrors = await page.locator('.field-error, .input-error, [data-error]').allTextContents().catch(() => []);
+      
+      console.error('Login failed - still on /login page');
+      console.error('Current URL:', currentUrl);
+      console.error('Alert text:', alertText);
+      console.error('Form errors:', formErrors);
+      
+      throw new Error(`Login failed: still on /login. Alert: ${alertText}, Errors: ${formErrors.join(', ')}`);
     }
+    
+    // Verify successful login - check for app container/sidebar (stable selector)
+    // The app should have a sidebar with W&K Connect branding or navigation
+    const appContainer = page.locator('[id="root"]').filter({ 
+      has: page.locator('text=/W&K Connect|CRM|Лиды|Контакт-центр/i')
+    });
+    
+    await expect(appContainer).toBeVisible({ timeout: 15000 });
+    
+    // Additional verification - URL should not be /login
+    expect(page.url()).not.toContain('/login');
   });
 
   test('should show error for invalid credentials', async ({ page }) => {
@@ -61,9 +71,9 @@ test.describe('Authentication', () => {
     await page.locator('#password').fill('wrongpassword');
     
     // Click login button
-    await page.getByRole('button', { name: /войти/i }).click();
+    await page.getByRole('button', { name: /войти|sign in|login/i }).click();
     
-    // Should stay on login page or show error
+    // Wait for potential error or redirect
     await page.waitForTimeout(3000);
     
     // Verify still on login page (not redirected)

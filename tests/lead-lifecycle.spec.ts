@@ -102,17 +102,19 @@ test.describe('Lead Lifecycle', () => {
     // Step 1: Login
     await login(page);
     
-    // Step 2: Navigate directly to lead creation page
-    await page.goto('/crm/leads?action=create');
+    // Step 2: Navigate to leads page
+    await page.goto('/crm/leads');
+    await page.waitForLoadState('networkidle');
     
-    // Step 3: Wait for the create lead modal to appear
-    // Note: Modal has role="dialog" with aria-labelledby pointing to title element
-    // Using getByRole without name filter, then verify title text
+    // Step 3: Click "New Lead" button to open modal
+    await page.getByRole('button', { name: /новый лид/i }).click();
+    
+    // Step 4: Wait for the create lead modal to appear
     const modal = page.getByRole('dialog');
     await expect(modal).toBeVisible({ timeout: 15000 });
     await expect(modal.getByText(/создать новый лид/i)).toBeVisible();
     
-    // Step 4: Fill lead form using getByLabel within modal
+    // Step 5: Fill lead form using getByLabel within modal
     const titleInput = modal.getByLabel(/название лида/i);
     await titleInput.fill(testLeadName);
     
@@ -127,13 +129,13 @@ test.describe('Lead Lifecycle', () => {
       await phoneInput.fill('+49 151 00000000');
     }
     
-    // Step 5: Submit the form
+    // Step 6: Submit the form
     await modal.getByRole('button', { name: /создать лид/i }).click();
     
-    // Step 6: Wait for modal to close
+    // Step 7: Wait for modal to close
     await expect(modal).toBeHidden({ timeout: 15000 });
     
-    // Step 7: Verify lead was created
+    // Step 8: Verify lead was created
     await expect(page.getByText(testLeadName)).toBeVisible({ timeout: 15000 });
     
     console.log(`[TEST] Lead "${testLeadName}" created and verified successfully`);

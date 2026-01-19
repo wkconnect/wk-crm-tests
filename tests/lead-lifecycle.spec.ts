@@ -25,10 +25,17 @@ async function login(page: Page): Promise<void> {
   }
   
   await page.goto('/login');
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
+  
+  // Fill login form using getByLabel
+  await page.getByLabel(/логин|email|username/i).fill(username);
+  await page.getByLabel(/пароль|password/i).fill(password);
+  
+  // Click login button
   await page.getByRole('button', { name: /войти/i }).click();
-  await page.waitForURL(/\/(crm|dashboard|contact-center)/, { timeout: 30000 });
+  
+  // Wait for shell to appear (strict selector - only aside:visible)
+  const shell = page.locator('aside:visible').first();
+  await expect(shell).toBeVisible({ timeout: 30000 });
 }
 
 // Helper: Cleanup - archive/delete test lead
@@ -64,28 +71,7 @@ async function cleanupTestLead(page: Page, leadName: string): Promise<void> {
         }
         console.log(`[CLEANUP] Lead "${leadName}" deleted`);
       } else {
-        // Fallback: Change status to "Потеряны" (Lost)
-        const editButton = page.getByRole('button', { name: /редактировать/i });
-        if (await editButton.isVisible()) {
-          await editButton.click();
-          await page.waitForTimeout(500);
-          
-          // Find status dropdown and change to Lost
-          const statusDropdown = page.locator('#status, [id*="status"]');
-          if (await statusDropdown.isVisible()) {
-            await statusDropdown.click();
-            const lostOption = page.getByRole('option', { name: /потерян|lost/i });
-            if (await lostOption.isVisible({ timeout: 2000 })) {
-              await lostOption.click();
-              // Save changes
-              const saveButton = page.getByRole('button', { name: /сохранить|save/i });
-              if (await saveButton.isVisible()) {
-                await saveButton.click();
-              }
-              console.log(`[CLEANUP] Lead "${leadName}" marked as Lost`);
-            }
-          }
-        }
+        console.log(`[CLEANUP] No archive/delete button found for "${leadName}"`);
       }
     } else {
       console.log(`[CLEANUP] Lead "${leadName}" not found - may have been already cleaned up`);
@@ -116,51 +102,39 @@ test.describe('Lead Lifecycle', () => {
     // Step 1: Login
     await login(page);
     
-    // Step 2: Navigate directly to lead creation page (more stable than clicking button)
-    // This avoids issues with finding "Новый лид" button which may have different labels
-    await page.goto('/crm/leads?action=create');
-    await page.waitForLoadState('networkidle');
-    
-    // Step 3: Wait for the create lead modal/form to appear
-    // Check for the title input which is the main field
-    const titleInput = page.locator('#title');
-    await expect(titleInput).toBeVisible({ timeout: 10000 });
-    
-    // Step 4: Fill lead form with TEST_ prefix
-    await titleInput.fill(testLeadName);
-    await page.locator('#email').fill('test@wkconnect.de');
-    await page.locator('#phone').fill('+49 151 00000000');
-    
-    // Set value to 0 (test lead)
-    const valueInput = page.locator('#value');
-    if (await valueInput.isVisible()) {
-      await valueInput.fill('0');
-    }
-    
-    // Step 5: Submit the form - try multiple selectors for the create button
-    const createButton = page.getByRole('button', { name: /создать лид|create lead/i });
-    const submitButton = page.locator('button[type="submit"]');
-    
-    if (await createButton.isVisible({ timeout: 3000 })) {
-      await createButton.click();
-    } else if (await submitButton.isVisible({ timeout: 3000 })) {
-      await submitButton.click();
-    } else {
-      // Fallback: find any button with "создать" text
-      await page.locator('button:has-text("Создать")').first().click();
-    }
-    
-    // Step 6: Verify lead was created
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
-    
-    // Navigate to leads list to verify
+    // Step 2: Navigate to leads page
     await page.goto('/crm/leads');
     await page.waitForLoadState('networkidle');
     
-    // Search for our test lead - use more flexible matching
-    const leadExists = await page.locator(`text=${testLeadName}`).isVisible({ timeout: 10000 });
-    expect(leadExists).toBe(true);
+    // Step 3: Click "Новый лид" button to open modal
+    await page.getByRole('button', { name: /новый лид/i }).click();
+    
+    // Step 4: Wait for modal dialog to appear
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible({ timeout: 15000 });
+    
+    // Step 5: Fill lead form using getByLabel within modal
+    await modal.getByLabel(/название лида/i).fill(testLeadName);
+    
+    // Fill optional fields if visible
+    const emailInput = modal.getByLabel(/email/i);
+    if (await emailInput.isVisible({ timeout: 2000 })) {
+      await emailInput.fill('test@wkconnect.de');
+    }
+    
+    const phoneInput = modal.getByLabel(/телефон|phone/i);
+    if (await phoneInput.isVisible({ timeout: 2000 })) {
+      await phoneInput.fill('+49 151 00000000');
+    }
+    
+    // Step 6: Click "Создать лид" button
+    await modal.getByRole('button', { name: /создать лид/i }).click();
+    
+    // Step 7: Wait for modal to close
+    await expect(modal).toBeHidden({ timeout: 15000 });
+    
+    // Step 8: Verify TEST_Lead_* appears in the list
+    await expect(page.getByText(testLeadName)).toBeVisible({ timeout: 15000 });
     
     console.log(`[TEST] Lead "${testLeadName}" created and verified successfully`);
     

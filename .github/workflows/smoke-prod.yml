@@ -1,0 +1,53 @@
+name: Smoke PROD
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Smoke + RBAC tests
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+
+          CRM_USER: ${{ secrets.CRM_USER }}
+          CRM_PASS: ${{ secrets.CRM_PASS }}
+
+          CRM_ADMIN_USER: ${{ secrets.CRM_ADMIN_USER }}
+          CRM_ADMIN_PASS: ${{ secrets.CRM_ADMIN_PASS }}
+
+          CRM_L1_USER: ${{ secrets.CRM_L1_USER }}
+          CRM_L1_PASS: ${{ secrets.CRM_L1_PASS }}
+
+          CRM_L2_USER: ${{ secrets.CRM_L2_USER }}
+          CRM_L2_PASS: ${{ secrets.CRM_L2_PASS }}
+
+          CRM_L3_USER: ${{ secrets.CRM_L3_USER }}
+          CRM_L3_PASS: ${{ secrets.CRM_L3_PASS }}
+
+        run: |
+          npx playwright install --with-deps
+          npx playwright test tests/smoke-prod.spec.ts tests/rbac-smoke.spec.ts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report
+            test-results

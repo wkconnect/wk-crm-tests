@@ -1,0 +1,54 @@
+name: Smoke PROD
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Browser to use'
+        required: false
+        default: 'chromium'
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+
+env:
+  BASE_URL: ${{ secrets.BASE_URL || 'https://crm.wkconnect.de' }}
+
+concurrency:
+  group: smoke-prod
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ github.event.inputs.browser || 'chromium' }}
+
+      - name: Run smoke tests
+        env:
+          CRM_USER: ${{ secrets.CRM_USER }}
+          CRM_PASS: ${{ secrets.CRM_PASS }}
+        run: npx playwright test tests/smoke-prod.spec.ts --project=${{ github.event.inputs.browser || 'chromium' }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ github.run_number }}
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7

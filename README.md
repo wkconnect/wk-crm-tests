@@ -37,6 +37,7 @@ Set these in your environment or GitHub Secrets:
 ```bash
 export CRM_USER="your-test-user@wkconnect.de"
 export CRM_PASS="your-password"
+export BASE_URL="https://crm.wkconnect.de"  # Optional, defaults to PROD
 ```
 
 ## Running Tests
@@ -51,9 +52,57 @@ npm run test:headed
 # Run with debug mode
 npm run test:debug
 
+# Run smoke tests only
+npx playwright test tests/smoke-prod.spec.ts
+
 # View HTML report
 npm run report
 ```
+
+## GitHub Actions Workflows
+
+### E2E PROD Safe (`.github/workflows/e2e.yml`)
+
+Main E2E test suite triggered on pull requests.
+
+| Trigger | Purpose |
+|---------|---------|
+| `pull_request` | Validate PR changes |
+| `workflow_dispatch` | Manual run |
+
+### E2E PROD Scheduled (`.github/workflows/e2e-prod-scheduled.yml`)
+
+Automated health check running every 6 hours.
+
+| Trigger | Purpose |
+|---------|---------|
+| `schedule` (cron: `0 */6 * * *`) | Every 6 hours |
+| `workflow_dispatch` | Manual run |
+
+**To run manually:**
+1. Go to Actions → E2E PROD Scheduled
+2. Click "Run workflow"
+3. Select branch and click "Run workflow"
+
+### Smoke PROD (`.github/workflows/smoke-prod.yml`)
+
+Quick health check for critical pages (login, contact-center, leads, tasks).
+
+| Trigger | Purpose |
+|---------|---------|
+| `workflow_dispatch` | Manual run only |
+
+**To run manually:**
+1. Go to Actions → Smoke PROD
+2. Click "Run workflow"
+3. Select browser (chromium/firefox/webkit)
+4. Click "Run workflow"
+
+**What it tests:**
+- Login functionality
+- Contact Center page loads
+- CRM Leads page loads
+- Tasks page loads
 
 ## Test Suites
 
@@ -70,12 +119,13 @@ Tests lead CRUD operations:
 - Verify lead appears in list
 - **Cleanup**: Archive/delete lead after test
 
-## CI/CD
+### smoke-prod.spec.ts
 
-GitHub Actions workflow (`.github/workflows/e2e.yml`):
-- Triggers: `pull_request`, `workflow_dispatch`
-- Artifacts: HTML report + traces/videos on failure
-- Secrets required: `CRM_USER`, `CRM_PASS`
+Quick health check (read-only, no data creation):
+- Login and verify shell
+- Load Contact Center
+- Load CRM Leads
+- Load Tasks
 
 ## Artifacts
 
@@ -83,12 +133,46 @@ On test failure, the following artifacts are uploaded:
 - `playwright-report/` - HTML test report
 - `test-results/` - Traces, videos, screenshots
 
+Artifacts are retained for:
+- Scheduled runs: 14 days
+- Smoke runs: 7 days
+- PR runs: default retention
+
+## Required Secrets
+
+Configure these in GitHub Settings → Secrets and variables → Actions:
+
+| Secret | Description |
+|--------|-------------|
+| `CRM_USER` | Test user email |
+| `CRM_PASS` | Test user password |
+| `BASE_URL` | (Optional) Base URL, defaults to `https://crm.wkconnect.de` |
+
+## Troubleshooting
+
+### If tests fail
+
+1. Download artifacts from the failed workflow run
+2. Open trace: `npx playwright show-trace test-results/*/trace.zip`
+3. Analyze the failure:
+   - **Selector issue** → Fix in `wk-crm-tests`
+   - **PROD bug** → Create issue in `wkconnect/AgentHab`
+
+### Common issues
+
+| Issue | Solution |
+|-------|----------|
+| Login fails | Check CRM_USER/CRM_PASS secrets |
+| Timeout on shell | Increase timeout or check PROD status |
+| Element not found | Update selector using trace viewer |
+
 ## Contributing
 
 1. All tests MUST use `TEST_` prefix for created entities
 2. All tests MUST have cleanup in `afterEach`
 3. No real PII - use synthetic data only
 4. Run tests locally before PR
+5. If CI fails, analyze trace before "fixing" tests
 
 ## License
 
